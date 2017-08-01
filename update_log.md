@@ -50,6 +50,12 @@
         - [1.25 在回测的时候,增加一个回测内全局变量](#125-在回测的时候增加一个回测内全局变量)
         - [1.26 新增一个创建多维list的函数](#126-新增一个创建多维list的函数)
         - [1.27 修改了一个QABacktest的传参, 现在在策略中,需要指定买卖状态](#127-修改了一个qabacktest的传参-现在在策略中需要指定买卖状态)
+        - [1.28 对于backtest的加载的外部函数的接口进行修改](#128-对于backtest的加载的外部函数的接口进行修改)
+        - [1.29 修改了QA_Query 里返回的数组格式](#129-修改了qa_query-里返回的数组格式)
+        - [1.30 修改了QA_util_save_csv的模式](#130-修改了qa_util_save_csv的模式)
+        - [1.31 通达信5分钟线解析保存](#131-通达信5分钟线解析保存)
+        - [1.32 获取指数k线的api更新](#132-获取指数k线的api更新)
+        - [1.33 QA_util更新 QA_util_time_stamp](#133-qa_util更新-qa_util_time_stamp)
     - [巨大改动/重构](#巨大改动重构)
         - [2.1 QA.QAARP.QAAccount](#21-qaqaarpqaaccount)
         - [2.2 QA.QABacktest.Backtest_analysis](#22-qaqabacktestbacktest_analysis)
@@ -698,9 +704,182 @@ QA.QAUtil.QA_util_multi_demension_list(3,3)
 ```
 
 
+### 1.28 对于backtest的加载的外部函数的接口进行修改
+2017/7/20
+
+对于backtest的加载的外部策略,现在暂时有以下三个句柄
+
+- on_start
+- strategy
+- on_end
+
+其中,on_start/on_end这两个句柄可有可无, strategy句柄是必须要有的
+
+### 1.29 修改了QA_Query 里返回的数组格式
+2017/7/21
+
+```python
+def QA_fetch_stock_day(code, startDate, endDate, collections=QA_Setting.client.quantaxis.stock_day, type_='numpy'):
+    # print(datetime.datetime.now())
+    startDate = str(startDate)[0:10]
+    endDate = str(endDate)[0:10]
+
+    if QA_util_date_valid(endDate) == True:
+
+        list_a = []
+
+        for item in collections.find({
+            'code': str(code)[0:6], "date_stamp": {
+                "$lte": QA_util_date_stamp(endDate),
+                "$gte": QA_util_date_stamp(startDate)}}):
+            list_a.append([str(item['code']), float(item['open']), float(item['high']), float(
+                item['low']), float(item['close']), float(item['volume']), item['date'], float(item['turnover'])])
+        ## 多种数据格式
+        if type_ == 'numpy':
+            data = numpy.asarray(list_a)
+        elif type_ == 'list':
+            data = list_a
+        elif type_ == 'pandas':
+            data = DataFrame(list_a, columns=[
+                             'code', 'open', 'high', 'low', 'close', 'volume', 'date', 'turnover'])
+        return data
+    else:
+        QA_util_log_info('something wrong with date')
+
+```
+现在可以通过QA_fetch_stock_day里面选择是返回list,numpy还是dataframe. 为了兼容性考虑,默认依然是numpy
+
+### 1.30 修改了QA_util_save_csv的模式
+2017/07/21
 
 
+```python
+def QA_util_save_csv(data: list, name: str, column=None, location=None):
+    # 重写了一下保存的模式
+    
+    assert isinstance(data, list)
+    if location == None:
+        path = './' + str(name) + '.csv'
+    else:
+        path = location + str(name) + '.csv'
+    with open(path, 'w', newline='') as f:
+        csvwriter = csv.writer(f)
+        if column == 'None':
+            pass
+        else:
+            csvwriter.writerow(column)
+        for item in data:
+            csvwriter.writerow(item)
 
+```
+
+示例:
+
+```python
+
+import QUANTAXIS as QA
+
+QA.QA_util_save_csv(QA.QA_fetch_stock_day('000001','2017-01-01','2017-07-01','list'),'000001')
+```
+```csv
+000001,9.11,9.18,9.09,9.16,459840.47,2017-01-03,0.31
+000001,9.15,9.18,9.14,9.16,449329.53,2017-01-04,0.31
+000001,9.17,9.18,9.15,9.17,344372.91,2017-01-05,0.24
+000001,9.17,9.17,9.11,9.13,358154.19,2017-01-06,0.24
+000001,9.13,9.17,9.11,9.15,361081.56,2017-01-09,0.21
+000001,9.15,9.16,9.14,9.15,241053.95,2017-01-10,0.14
+000001,9.14,9.17,9.13,9.14,303430.88,2017-01-11,0.18
+000001,9.13,9.17,9.13,9.15,428006.75,2017-01-12,0.25
+000001,9.14,9.19,9.12,9.16,434301.38,2017-01-13,0.26
+000001,9.15,9.16,9.07,9.14,683165.81,2017-01-16,0.4
+000001,9.12,9.16,9.1,9.15,545552.38,2017-01-17,0.32
+000001,9.14,9.19,9.13,9.17,574269.38,2017-01-18,0.34
+000001,9.15,9.24,9.15,9.18,437712.88,2017-01-19,0.26
+000001,9.17,9.23,9.17,9.22,393328.56,2017-01-20,0.23
+000001,9.22,9.26,9.2,9.22,420299.31,2017-01-23,0.25
+000001,9.23,9.28,9.2,9.27,470244.09,2017-01-24,0.28
+000001,9.27,9.28,9.25,9.26,304401.97,2017-01-25,0.18
+000001,9.27,9.34,9.26,9.33,420712.56,2017-01-26,0.25
+000001,9.45,10.26,9.33,10.26,19345.0,2017-02-02,0.01
+000001,9.34,9.36,9.23,9.26,315472.25,2017-02-03,0.19
+000001,9.26,9.32,9.26,9.31,516786.12,2017-02-06,0.31
+000001,9.31,9.32,9.27,9.3,396884.97,2017-02-07,0.23
+...........
+```
+### 1.31 通达信5分钟线解析保存
+2017/7/23
+
+首先要下载:
+
+- 深圳5分钟线
+
+http://www.tdx.com.cn/products/data/data/vipdoc/sz5fz.zip
+
+- 上证5分钟线
+
+http://www.tdx.com.cn/products/data/data/vipdoc/sh5fz.zip
+
+然后解压到一个目录里
+
+```python
+
+import QUANTAXIS as QA
+
+QA.QA_SU_save_stock_min_5('你解压好的目录')
+
+
+#例如 QA.QA_SU_save_stock_min_5('C:\\users\\yutiansut\\desktop\\sh5fz')
+```
+```bash
+
+In [2]: QA.QA_SU_save_stock_min_5('C:\\users\\yutiansut\\desktop\\sz5fz')
+QUANTAXIS>> Now_saving 000001's 5 min tick
+QUANTAXIS>> Now_saving 000002's 5 min tick
+QUANTAXIS>> Now_saving 000004's 5 min tick
+QUANTAXIS>> Now_saving 000005's 5 min tick
+QUANTAXIS>> Now_saving 000006's 5 min tick
+QUANTAXIS>> Now_saving 000007's 5 min tick
+QUANTAXIS>> Now_saving 000008's 5 min tick
+QUANTAXIS>> Now_saving 000009's 5 min tick
+QUANTAXIS>> Now_saving 000010's 5 min tick
+QUANTAXIS>> Now_saving 000011's 5 min tick
+QUANTAXIS>> Now_saving 000012's 5 min tick
+QUANTAXIS>> Now_saving 000014's 5 min tick
+QUANTAXIS>> Now_saving 000016's 5 min tick
+QUANTAXIS>> Now_saving 000017's 5 min tick
+QUANTAXIS>> Now_saving 000018's 5 min tick
+QUANTAXIS>> Now_saving 000019's 5 min tick
+QUANTAXIS>> Now_saving 000020's 5 min tick
+QUANTAXIS>> Now_saving 000021's 5 min tick
+QUANTAXIS>> Now_saving 000022's 5 min tick
+QUANTAXIS>> Now_saving 000023's 5 min tick
+QUANTAXIS>> Now_saving 000024's 5 min tick
+QUANTAXIS>> Now_saving 000025's 5 min tick
+QUANTAXIS>> Now_saving 000026's 5 min tick
+QUANTAXIS>> Now_saving 000027's 5 min tick
+QUANTAXIS>> Now_saving 000028's 5 min tick
+```
+
+### 1.32 获取指数k线的api更新
+2017/7/24
+
+```python
+QA_fetch_index_day(code, startDate, endDate,type_='numpy' ,collections=QA_Setting.client.quantaxis.stock_day)
+
+```
+
+一般而言,直接使用QA_fetch_index_day(code, startDate, endDate)就可以了
+
+### 1.33 QA_util更新 QA_util_time_stamp
+2017/7/24
+
+QA_util_time_stamp用于将时间转化成时间戳
+
+```python
+import QUANTAXIS as QA
+QA.QA_util_time_stamp('2017-01-01 10:25:08')
+
+```
 
 ## 巨大改动/重构
 
